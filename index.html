@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <title>Black Raven - Secure Ops</title>
+  <style>
+    body { background: #0e0e0e; color: #f0f0f0; font-family: sans-serif; padding: 20px; }
+    .hidden { display: none; }
+    input, textarea, button { background: #111; color: #fff; border: 1px solid #333; padding: 8px; margin: 4px 0; width: 100%; }
+    .mission { background: #1c1c1c; border: 1px solid #333; padding: 10px; margin-bottom: 8px; }
+    img.preview { max-width: 100%; margin: 6px 0; }
+    .btn-small { padding: 4px 8px; margin: 2px; font-size: 12px; }
+    .lang-toggle { float: right; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="loginScreen">
+    <h2 id="loginTitle">🔐 Enter Password</h2>
+    <input type="password" id="passwordInput" placeholder="Password / كلمة المرور">
+    <button onclick="checkPassword()">Login / دخول</button>
+  </div>
+
+  <div id="mainContent" class="hidden">
+    <div>
+      <h1 id="mainTitle">Black Raven</h1>
+      <span class="lang-toggle" onclick="toggleLang()">🌐 <span id="langBtn">عربي</span></span>
+    </div>
+
+    <div>
+      <h2 id="formTitle">New Mission</h2>
+      <input id="missionTitle" placeholder="Title / العنوان">
+      <textarea id="missionDetails" rows="3" placeholder="Details / التفاصيل"></textarea>
+      <input type="file" id="missionImage">
+      <button onclick="saveMission()" id="saveBtn">Save / حفظ</button>
+    </div>
+
+    <input type="text" id="searchInput" placeholder="Search / بحث..." oninput="searchMissions()">
+
+    <button onclick="exportJSON()">Export JSON</button>
+    <button onclick="exportCSV()">Export CSV</button>
+
+    <h2 id="logTitle">Mission Log</h2>
+    <div id="missions"></div>
+  </div>
+
+  <script>
+    const translations = {
+      en: { loginTitle:"🔐 Enter Password", mainTitle:"Black Raven", formTitle:"New Mission",
+            saveBtn:"Save", logTitle:"Mission Log", langBtn:"عربي", delete:"Delete", edit:"Edit", search:"Search..." },
+      ar: { loginTitle:"🔐 أدخل كلمة المرور", mainTitle:"بلاك ريفن", formTitle:"مهمة جديدة",
+            saveBtn:"حفظ", logTitle:"سجل المهمات", langBtn:"English", delete:"حذف", edit:"تعديل", search:"بحث..." }
+    };
+    let currentLang='en', editIndex=null, password="black123";
+
+    function checkPassword(){
+      if(document.getElementById('passwordInput').value===password){
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('mainContent').classList.remove('hidden');
+        updateLang(); loadMissions();
+      } else alert(currentLang=='ar'?'كلمة المرور غير صحيحة':'Wrong password');
+    }
+    function toggleLang(){ currentLang=(currentLang=='en'?'ar':'en'); updateLang(); }
+    function updateLang(){
+      const t=translations[currentLang];
+      document.body.dir = currentLang=='ar'?'rtl':'ltr';
+      ['loginTitle','mainTitle','formTitle','saveBtn','logTitle','langBtn','searchInput'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(el) el.placeholder?el.placeholder=t[id]||el.placeholder:el.textContent=t[id]||el.textContent;
+      });
+    }
+    function saveMission(){
+      const title=document.getElementById("missionTitle").value.trim();
+      const details=document.getElementById("missionDetails").value.trim();
+      const file=document.getElementById("missionImage").files[0];
+      if(!title||!details)return alert(currentLang=='ar'?'اكمل كل الحقول':'Fill all fields');
+      const reader=new FileReader();
+      reader.onloadend=()=>{
+        const missions=JSON.parse(localStorage.getItem("missions")||"[]");
+        const m={title,details,img:file?reader.result:null,date:new Date().toISOString()};
+        if(editIndex!==null){ missions[editIndex]=m; editIndex=null; }
+        else missions.push(m);
+        localStorage.setItem("missions",JSON.stringify(missions));
+        resetForm(); loadMissions();
+      };
+      file?reader.readAsDataURL(file):reader.onloadend();
+    }
+    function resetForm(){
+      ["missionTitle","missionDetails","missionImage"].forEach(id=>document.getElementById(id).value="");
+    }
+    function loadMissions(mlist=null){
+      const missions=(mlist||JSON.parse(localStorage.getItem("missions")||"[]")).slice().reverse();
+      const container=document.getElementById("missions"); container.innerHTML="";
+      missions.forEach((m,i)=>{
+        const t=translations[currentLang];
+        const idx=(mlist?missions:missions).length-1-i;
+        const imgTag=m.img?`<img class="preview" src="${m.img}">`:"";
+        const div=document.createElement("div"); div.className="mission";
+        div.innerHTML=`<strong>${m.title}</strong><br><small>${new Date(m.date).toLocaleString()}</small>
+                       <p>${m.details}</p>${imgTag}
+                       <button class="btn-small" onclick="editMission(${idx})">${t.edit}</button>
+                       <button class="btn-small" onclick="deleteMission(${idx})">${t.delete}</button>`;
+        container.appendChild(div);
+      });
+    }
+    function deleteMission(i){
+      const arr=JSON.parse(localStorage.getItem("missions")||"[]"); arr.splice(i,1);
+      localStorage.setItem("missions",JSON.stringify(arr)); loadMissions();
+    }
+    function editMission(i){
+      const m=JSON.parse(localStorage.getItem("missions")||"[]")[i];
+      document.getElementById("missionTitle").value=m.title;
+      document.getElementById("missionDetails").value=m.details;
+      editIndex=i; scrollTo(0,0);
+    }
+    function searchMissions(){
+      const kw=document.getElementById("searchInput").value.toLowerCase();
+      const filtered=JSON.parse(localStorage.getItem("missions")||"[]")
+        .filter(m=>m.title.toLowerCase().includes(kw)||m.details.toLowerCase().includes(kw));
+      loadMissions(filtered);
+    }
+    function downloadFile(name, text, type){
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([text],{type}));
+      a.download=name; a.click();
+    }
+    function exportJSON(){ downloadFile('missions.json', localStorage.getItem("missions")||"[]", 'application/json'); }
+    function exportCSV(){
+      const arr=JSON.parse(localStorage.getItem("missions")||"[]");
+      const rows=['title,details,date']; arr.forEach(m=>rows.push(`"${m.title}","${m.details}",${m.date}`));
+      downloadFile('missions.csv', rows.join('\n'), 'text/csv');
+    }
+    updateLang();
+  </script>
+</body>
+</html>
